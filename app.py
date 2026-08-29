@@ -1,6 +1,7 @@
 import base64
 import os
 import random
+import urllib.parse
 from datetime import datetime, timedelta
 import openpyxl
 import pandas as pd
@@ -61,10 +62,29 @@ st.markdown(
             width: 100%;
             background-color: #181818;
             transition: 0.3s;
+            margin-bottom: 8px;
         }
         .company-link:hover {
             background-color: #DDBB01;
             color: #000000 !important;
+        }
+        .whatsapp-btn {
+            display: inline-block;
+            color: #FFFFFF !important;
+            background-color: #25D366;
+            text-decoration: none;
+            font-weight: bold;
+            font-size: 14px;
+            padding: 10px 12px;
+            border-radius: 6px;
+            text-align: center;
+            width: 100%;
+            transition: 0.3s;
+            box-shadow: 0px 4px 6px rgba(0,0,0,0.3);
+        }
+        .whatsapp-btn:hover {
+            background-color: #1EBE5D;
+            color: #FFFFFF !important;
         }
         .highlight-yellow {
             color: #DDBB01;
@@ -76,6 +96,13 @@ st.markdown(
 )
 
 NOME_ARQUIVO = "banco_de_senhas_automatizado.xlsx"
+
+# Configuração do WhatsApp
+NUMERO_WHATSAPP = "5581986296128"
+MENSAGEM_PADRAO = urllib.parse.quote(
+    "Olá! Preciso de suporte no sistema da portaria Interface Digital."
+)
+LINK_WHATSAPP = f"https://wa.me/{NUMERO_WHATSAPP}?text={MENSAGEM_PADRAO}"
 
 
 def salvar_dados(registros):
@@ -111,6 +138,7 @@ def salvar_dados(registros):
 
 
 def inicializar_e_carregar_dados():
+    """Garante a integridade do arquivo Excel e carrega os dados em memória."""
     if not os.path.exists(NOME_ARQUIVO):
         wb = openpyxl.Workbook()
         ws = wb.active
@@ -185,7 +213,7 @@ def inicializar_e_carregar_dados():
 registros = inicializar_e_carregar_dados()
 
 # ---------------------------------------------------------
-# BARRA LATERAL (BRANDING & DOWNLOAD)
+# BARRA LATERAL (BRANDING, DOWNLOAD & SUPORTE)
 # ---------------------------------------------------------
 with st.sidebar:
     if os.path.exists("logo.png"):
@@ -220,13 +248,13 @@ with st.sidebar:
         [
             "📊 Painel de Controle",
             "🔑 Novo Cadastro de Senha",
+            "✏️ Editar Cadastro",
             "🗑️ Cancelar / Remover Senha",
         ],
     )
 
     st.markdown("---")
 
-    # BOTAO DE DOWNLOAD NA SIDEBAR
     if os.path.exists(NOME_ARQUIVO):
         with open(NOME_ARQUIVO, "rb") as file:
             st.download_button(
@@ -239,17 +267,26 @@ with st.sidebar:
     st.markdown("---")
 
     st.markdown(
-        """
-        <a href="https://www.interfacedigital.com.br" target="_blank" class="company-link">
-            🌐 Acesse nosso Site Oficial
+        f"""
+        <a href="{LINK_WHATSAPP}" target="_blank" class="whatsapp-btn">
+            💬 Suporte WhatsApp
         </a>
-    """,
+        """,
         unsafe_allow_html=True,
     )
 
     st.markdown(
-        "<br><p style='text-align: center; color: #888888; font-size: 11px;'>"
-        " Interface Digital Security © 2026</p>",
+        """
+        <a href="https://www.interfacedigital.com.br" target="_blank" class="company-link" style="margin-top: 8px;">
+            🌐 Site Oficial
+        </a>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        "<p style='text-align: center; color: #888888; font-size: 11px; margin-top: 15px;'>"
+        "Interface Digital Security © 2026</p>",
         unsafe_allow_html=True,
     )
 
@@ -360,11 +397,85 @@ elif menu == "🔑 Novo Cadastro de Senha":
                 )
                 st.rerun()
 
+elif menu == "✏️ Editar Cadastro":
+    st.subheader("Alterar Dados de Registro Existente")
+
+    if not registros:
+        st.info("Nenum cadastro disponível para edição.")
+    else:
+        opcoes = [
+            f"ID {r['id']} - {r['nome']} (Senha: {r['senha']})"
+            for r in registros
+        ]
+        selecionado = st.selectbox("Selecione o registro para editar:", opcoes)
+
+        id_selecionado = int(selecionado.split(" ")[1])
+        reg_atual = next(r for r in registros if r["id"] == id_selecionado)
+
+        partes_nome = reg_atual["nome"].split(" ", 1)
+        nome_padrao = partes_nome[0]
+        sobrenome_padrao = partes_nome[1] if len(partes_nome) > 1 else ""
+
+        with st.form("form_edicao"):
+            st.info(f"🔑 **Senha (Não alterável):** `{reg_atual['senha']}`")
+
+            col1, col2 = st.columns(2)
+            with col1:
+                novo_nome = st.text_input("Nome:", value=nome_padrao).strip()
+            with col2:
+                novo_sobrenome = st.text_input(
+                    "Sobrenome:", value=sobrenome_padrao
+                ).strip()
+
+            novo_prazo = st.number_input(
+                "Prazo de Validade em Dias (Máximo 30 dias):",
+                min_value=1,
+                max_value=30,
+                value=int(reg_atual["prazo_dias"]),
+                step=1,
+            )
+
+            submit_edit = st.form_submit_button("Salvar Alterações")
+
+        if submit_edit:
+            if not novo_nome or not novo_sobrenome:
+                st.warning(
+                    "⚠️ Preenchimento obrigatório: Digite o Nome e o"
+                    " Sobrenome."
+                )
+            else:
+                novo_nome_completo = (
+                    f"{novo_nome} {novo_sobrenome}".upper().strip()
+                )
+                hoje = datetime.now()
+
+                nova_data_vencimento = reg_atual["data_criacao"] + timedelta(
+                    days=int(novo_prazo)
+                )
+                novo_status = (
+                    "Ativa"
+                    if int(novo_prazo) > 0 and nova_data_vencimento >= hoje
+                    else "Expirada"
+                )
+
+                reg_atual["nome"] = novo_nome_completo
+                reg_atual["prazo_dias"] = int(novo_prazo)
+                reg_atual["data_vencimento"] = nova_data_vencimento
+                reg_atual["status"] = novo_status
+
+                salvar_dados(registros)
+
+                st.success(
+                    f"✅ Cadastro do ID {id_selecionado} ({novo_nome_completo})"
+                    " atualizado com sucesso no Excel!"
+                )
+                st.rerun()
+
 elif menu == "🗑️ Cancelar / Remover Senha":
     st.subheader("Remover Registro e Liberar Acesso")
 
     if not registros:
-        st.info("Nenum cadastro disponível no momento.")
+        st.info("Nenhum cadastro disponível no momento.")
     else:
         opcoes = [f"ID {r['id']} - {r['nome']}" for r in registros]
         selecionado = st.selectbox("Selecione o registro para remover:", opcoes)
